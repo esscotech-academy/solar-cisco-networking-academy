@@ -1,0 +1,199 @@
+! ==============================================================================
+! Cisco IOS Production-Grade Device Hardening Baseline
+! Solar-Powered Cyber & Cisco Networking Academy — Northeast Nigeria
+! Entity: ESSCO TECH AGENCY LTD (RC: 7192842) | Royas Plaza, Maiduguri
+! Standard: CIS Cisco IOS 15.x Benchmark (Defensive Hardening Baseline)
+! ==============================================================================
+
+! ------------------------------------------------------------------------------
+! SECTION 1: GLOBAL DEVICE IDENTITY & CIPHER SUITES
+! ------------------------------------------------------------------------------
+hostname SW-CORE-MAIDUGURI-01
+no ip domain-lookup
+ip domain-name academy.esscotechagency.internal
+
+! Enable strong password encryption service across running-config
+service password-encryption
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+
+! Cryptographic Enable Secret (Type 9 scrypt / Type 8 SHA-256)
+! Fallback to standard Type 5 MD5 if legacy IOS
+enable algorithm-type scrypt secret CiscoAcademy@Maiduguri2026!
+
+! ------------------------------------------------------------------------------
+! SECTION 2: AAA (AUTHENTICATION, AUTHORIZATION, AND ACCOUNTING)
+! ------------------------------------------------------------------------------
+aaa new-model
+
+! Define local database authentication for logins and privilege escalation
+aaa authentication login default local
+aaa authentication login NO_AUTH none
+aaa authorization exec default local
+aaa authorization console
+
+! Local System Administrator Account with Privilege 15
+username secadmin privilege 15 secret AdminSecure#Maiduguri2026!
+username netcadet privilege 1 secret StudentObserver@2026!
+
+! ------------------------------------------------------------------------------
+! SECTION 3: SECURE SHELL (SSHv2) GENERATION & MITIGATION
+! ------------------------------------------------------------------------------
+! Generate 2048-bit RSA Key Pair
+crypto key generate rsa general-keys modulus 2048
+
+! Enforce SSH Version 2 strictly (Disallow legacy, unencrypted Telnet/SSHv1)
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh logging
+
+! Mitigation against SSH/Console Brute-Force Attacks
+login block-for 180 attempts 3 within 60
+login quiet-mode access-class ACL-ADMIN-MGMT
+login delay 2
+login on-failure log
+login on-success log
+
+! ------------------------------------------------------------------------------
+! SECTION 4: MANAGEMENT ACCESS CONTROL LIST (iACL)
+! ------------------------------------------------------------------------------
+ip access-list extended ACL-ADMIN-MGMT
+ permit ip 10.200.20.0 0.0.0.63 any
+ permit ip 10.200.40.0 0.0.0.127 any
+ permit ip 10.200.10.0 0.0.0.31 any
+ deny ip any any log-input
+
+! ------------------------------------------------------------------------------
+! SECTION 5: LINE SECURITY (CONSOLE, AUX, AND VTY)
+! ------------------------------------------------------------------------------
+line con 0
+ exec-timeout 5 0
+ logging synchronous
+ login authentication default
+ transport preferred none
+ stopbits 1
+
+line aux 0
+ no exec
+ transport input none
+ transport output none
+
+line vty 0 4
+ access-class ACL-ADMIN-MGMT in
+ exec-timeout 5 0
+ logging synchronous
+ login authentication default
+ transport input ssh
+ transport output none
+
+line vty 5 15
+ access-class ACL-ADMIN-MGMT in
+ exec-timeout 5 0
+ logging synchronous
+ login authentication default
+ transport input ssh
+ transport output none
+
+! ------------------------------------------------------------------------------
+! SECTION 6: DISABLE UNNECESSARY & INSECURE SERVICES
+! ------------------------------------------------------------------------------
+no ip http server
+no ip http secure-server
+no ip finger
+no ip source-route
+no ip bootp server
+no ip ftp server
+no service config
+no service finger
+no service udp-small-servers
+no service tcp-small-servers
+no cdp run
+no lldp run
+
+! ------------------------------------------------------------------------------
+! SECTION 7: LAYER 2 DEFENSIVE HARDENING (VLAN TRUNKING & SPANNING TREE)
+! ------------------------------------------------------------------------------
+! Create Non-Default Native VLAN (Defeat VLAN Hopping / Double Tagging)
+vlan 999
+ name DUMMY_BLACKHOLE_VLAN
+ exit
+
+! Enable BPDU Guard and PortFast globally on access ports
+spanning-tree mode rapid-pvst
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+spanning-tree extend system-id
+
+! ------------------------------------------------------------------------------
+! SECTION 8: ACCESS PORT SECURITY & SNOOPING DEFENSES
+! ------------------------------------------------------------------------------
+! DHCP Snooping against Rogue DHCP Attacks
+ip dhcp snooping
+ip dhcp snooping vlan 10,20,30,31,40
+no ip dhcp snooping information option
+
+! Dynamic ARP Inspection (DAI) against ARP Spoofing / Poisoning
+ip arp inspection vlan 10,20,30,31,40
+ip arp inspection validate src-mac dst-mac ip
+
+! Hardened Access Port Interface Template
+interface range GigabitEthernet0/1 - 20
+ description STUDENT-POD-WORKSTATIONS
+ switchport mode access
+ switchport access vlan 30
+ switchport nonegotiate
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ switchport port-security aging time 10
+ switchport port-security aging type inactivity
+ spanning-tree bpduguard enable
+ ip arp inspection limit rate 15
+ no cdp enable
+ no shutdown
+ exit
+
+! Hardened Core Uplink / Trunk Port
+interface GigabitEthernet0/24
+ description TRUNK-TO-CORE-ROUTER
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10,20,30,31,40
+ switchport nonegotiate
+ ip dhcp snooping trust
+ ip arp inspection trust
+ spanning-tree guard root
+ no shutdown
+ exit
+
+! Unused Ports Locked Down and Blackholed
+interface range GigabitEthernet0/21 - 23
+ description UNUSED-PORT-BLACKHOLE
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+ exit
+
+! ------------------------------------------------------------------------------
+! SECTION 9: LOGGING & TIME SYNCHRONIZATION
+! ------------------------------------------------------------------------------
+ntp server 10.200.20.254 prefer
+logging buffered 64000 warnings
+logging trap informational
+logging source-interface Vlan20
+logging host 10.200.20.10
+
+! Banner Warning
+banner motd ^C
+*******************************************************************************
+* NOTICE: AUTHORIZED ACCESS ONLY — ESSCO TECH CISCO & CYBER ACADEMY           *
+* LOCATION: ROYAS PLAZA, DAMBOA ROAD, MAIDUGURI, NIGERIA (RC: 7192842)        *
+* ALL SESSIONS ARE CRYPTOGRAPHICALLY MONITORED AND RECORDED. DISCONNECT NOW. *
+*******************************************************************************
+^C
+
+end
+write memory

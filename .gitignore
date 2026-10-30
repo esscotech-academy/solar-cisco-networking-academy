@@ -1,0 +1,22 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.env
+
+# Testing & Linting Artifacts
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local Runtime Backups & Logs
+backups/
+*.log
+
+# Operating System Files
+.DS_Store
+Thumbs.db

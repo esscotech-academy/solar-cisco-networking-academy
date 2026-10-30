@@ -1,0 +1,151 @@
+name: Lint & Validate Academy Assets
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-python:
+    name: Validate Python Automation Scripts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r automation/requirements.txt
+          pip install flake8 black mypy pytest
+
+      - name: Lint Code with Flake8
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 automation --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 automation --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+
+      - name: Validate Formatting with Black
+        run: |
+          black --check --diff automation/
+
+      - name: Dry-Run Test Backup Engine
+        run: |
+          python automation/cisco_backup_engine.py --dry-run --mock
+
+      - name: Dry-Run Test Solar Telemetry Daemon
+        run: |
+          python automation/solar_telemetry_daemon.py --mock --iterations 3 --interval 1
+
+  validate-snort-rules:
+    name: Validate Snort Detection Rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Snort Rule Syntax Validator
+        run: |
+          python - << 'EOF'
+          import re
+          import sys
+
+          rule_path = "labs/lab-03-snort-threat-detection.rules"
+          with open(rule_path, "r", encoding="utf-8") as f:
+              lines = f.readlines()
+
+          valid_actions = {"alert", "log", "pass", "drop", "reject", "sdrop"}
+          valid_protocols = {"tcp", "udp", "icmp", "ip"}
+          rule_count = 0
+          errors = []
+
+          for idx, line in enumerate(lines, 1):
+              line = line.strip()
+              if not line or line.startswith("#"):
+                  continue
+
+              match = re.match(r"^(\w+)\s+(\w+)\s+(\S+)\s+(\S+)\s+(->|<>)\s+(\S+)\s+(\S+)\s+\((.*)\)$", line)
+              if not match:
+                  errors.append(f"Line {idx}: Syntax error or missing rule parentheses: {line[:50]}...")
+                  continue
+
+              action, proto, src, sport, direction, dst, dport, options = match.groups()
+
+              if action not in valid_actions:
+                  errors.append(f"Line {idx}: Invalid action '{action}'")
+              if proto not in valid_protocols:
+                  errors.append(f"Line {idx}: Invalid protocol '{proto}'")
+              if "sid:" not in options:
+                  errors.append(f"Line {idx}: Missing mandatory 'sid' option")
+              if "rev:" not in options:
+                  errors.append(f"Line {idx}: Missing mandatory 'rev' option")
+              if "msg:" not in options:
+                  errors.append(f"Line {idx}: Missing mandatory 'msg' option")
+
+              rule_count += 1
+
+          print(f"Validated {rule_count} Snort rules.")
+          if errors:
+              print("\n".join(errors), file=sys.stderr)
+              sys.exit(1)
+          if rule_count < 10:
+              print(f"Expected at least 10 rules, found {rule_count}", file=sys.stderr)
+              sys.exit(1)
+          print("All Snort rules conform to production syntax standards.")
+          EOF
+
+  validate-cisco-ios:
+    name: Validate Cisco IOS Configurations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Security Best Practices in IOS Templates
+        run: |
+          python - << 'EOF'
+          import sys
+
+          def check_hardening(path):
+              with open(path, "r", encoding="utf-8") as f:
+                  content = f.read()
+
+              checks = [
+                  ("service password-encryption", "Missing service password-encryption"),
+                  ("ip ssh version 2", "Missing SSHv2 enforcement"),
+                  ("transport input ssh", "Missing SSH-only VTY enforcement"),
+                  ("login block-for", "Missing brute-force login delay/block"),
+                  ("aaa new-model", "Missing AAA new-model enforcement"),
+                  ("spanning-tree bpduguard", "Missing BPDU Guard"),
+                  ("ip dhcp snooping", "Missing DHCP Snooping"),
+              ]
+
+              missing = [err for token, err in checks if token not in content]
+              if missing:
+                  print(f"Security validation failures in {path}:", file=sys.stderr)
+                  for m in missing:
+                      print(f"  - {m}", file=sys.stderr)
+                  return False
+              print(f"Successfully validated hardening rules in {path}")
+              return True
+
+          ok = check_hardening("labs/lab-01-cisco-ios-hardening.ios")
+          if not ok:
+              sys.exit(1)
+          EOF

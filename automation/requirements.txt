@@ -1,0 +1,10 @@
+# Core Automation Dependencies for Academy Infrastructure
+# Compatible with Python 3.10, 3.11, and 3.12
+
+netmiko>=4.3.0
+pysnmp>=5.0.0
+rich>=13.7.0
+pydantic>=2.6.0
+typing-extensions>=4.9.0
+pytest>=8.0.0
+pyyaml>=6.0.1

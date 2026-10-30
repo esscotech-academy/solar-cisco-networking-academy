@@ -1,0 +1,132 @@
+! ==============================================================================
+! Cisco IOS OSPFv2 Multi-Area Enterprise Routing Baseline
+! Solar-Powered Cyber & Cisco Networking Academy — Northeast Nigeria
+! Entity: ESSCO TECH AGENCY LTD (RC: 7192842) | Maiduguri Campus
+! Role: Core Area Border Router (ABR) - Interconnecting Core (Area 0) & Pods (Area 10)
+! ==============================================================================
+
+! ------------------------------------------------------------------------------
+! SECTION 1: GLOBAL DEVICE IDENTITY & LOOPBACK INTERFACE
+! ------------------------------------------------------------------------------
+hostname R1-CORE-ABR-MAIDUGURI
+no ip domain-lookup
+ip domain-name academy.esscotechagency.internal
+service password-encryption
+ip routing
+
+! Stable 32-bit Router ID assigned via Loopback0
+interface Loopback0
+ description OSPF-ROUTER-ID-MANAGEMENT
+ ip address 10.255.255.1 255.255.255.255
+ no shutdown
+ exit
+
+! ------------------------------------------------------------------------------
+! SECTION 2: INTERFACE ADDRESSING & OSPF INTERFACE SETTINGS
+! ------------------------------------------------------------------------------
+
+! Link 1: Area 0 Backbone Link to WAN Gateway / Starlink Transceiver
+interface GigabitEthernet0/0/0
+ description UPLINK-TO-WAN-GATEWAY-AREA-0
+ ip address 10.200.254.1 255.255.255.252
+ ip mtu 1500
+ ! Enable Cryptographic MD5 Authentication on Link
+ ip ospf authentication message-digest
+ ip ospf message-digest-key 1 md5 MaiduguriCoreAuth2026Key!
+ ip ospf cost 10
+ ip ospf hello-interval 10
+ ip ospf dead-interval 40
+ no shutdown
+ exit
+
+! Link 2: Area 10 Internal Academic Pod Aggregation Trunk
+interface GigabitEthernet0/0/1
+ description DOWNLINK-TO-ACADEMIC-SWITCH-PODS-AREA-10
+ ip address 10.200.254.5 255.255.255.252
+ ip mtu 1500
+ ip ospf authentication message-digest
+ ip ospf message-digest-key 1 md5 AcademicPodAuth2026Key!
+ ip ospf cost 10
+ ip ospf hello-interval 10
+ ip ospf dead-interval 40
+ no shutdown
+ exit
+
+! Student Pod Access Gateway Interfaces (Area 10)
+interface GigabitEthernet0/0/2.30
+ description STUDENT-POD-A-VLAN-30
+ encapsulation dot1Q 30
+ ip address 10.200.30.1 255.255.255.0
+ no shutdown
+ exit
+
+interface GigabitEthernet0/0/2.31
+ description STUDENT-POD-B-VLAN-31
+ encapsulation dot1Q 31
+ ip address 10.200.31.1 255.255.255.0
+ no shutdown
+ exit
+
+! Solar Telemetry & IoT Subnet Gateway (Area 20)
+interface GigabitEthernet0/0/2.10
+ description SOLAR-MICROGRID-TELEMETRY-VLAN-10
+ encapsulation dot1Q 10
+ ip address 10.200.10.1 255.255.255.224
+ no shutdown
+ exit
+
+! ------------------------------------------------------------------------------
+! SECTION 3: OSPFv2 ROUTING PROCESS CONFIGURATION
+! ------------------------------------------------------------------------------
+router ospf 1
+ ! Explicitly assign 32-bit Router ID matching Loopback
+ router-id 10.255.255.1
+
+ ! Set Reference Bandwidth to 100 Gbps (100,000 Mbps) to avoid 1G/10G tie cost
+ auto-cost reference-bandwidth 100000
+
+ ! SECURITY BEST PRACTICE: Default all interfaces to passive to prevent rogue adjacencies
+ passive-interface default
+
+ ! Only activate OSPF Hello transmissions on verified inter-router trunk links
+ no passive-interface GigabitEthernet0/0/0
+ no passive-interface GigabitEthernet0/0/1
+
+ ! Area 0 Backbone Network Announcement
+ network 10.200.254.0 0.0.0.3 area 0
+ network 10.255.255.1 0.0.0.0 area 0
+
+ ! Area 10 Student Academic Pods Network Announcement
+ network 10.200.254.4 0.0.0.3 area 10
+ network 10.200.30.0 0.0.0.255 area 10
+ network 10.200.31.0 0.0.0.255 area 10
+
+ ! Area 20 Solar Telemetry Network Announcement
+ network 10.200.10.0 0.0.0.31 area 20
+
+ ! Area Border Router (ABR) Inter-Area Route Summarization (Reduces LSA Flooding)
+ area 10 range 10.200.30.0 255.255.254.0
+ area 20 range 10.200.10.0 255.255.255.224
+
+ ! Inject Default Route conditionally if upstream Starlink link is operational
+ default-information originate metric 10 metric-type 1
+
+ exit
+
+! ------------------------------------------------------------------------------
+! SECTION 4: VERIFICATION & OPERATIONAL COMMANDS
+! ------------------------------------------------------------------------------
+! Check OSPF Neighbor Adjacencies and State:
+! show ip ospf neighbor
+!
+! Verify OSPF Database and LSAs:
+! show ip ospf database
+!
+! Verify SPF Calculations and Cost:
+! show ip ospf interface brief
+!
+! Verify Routing Table:
+! show ip route ospf
+
+end
+write memory
