@@ -1,4 +1,5 @@
-# Solar-Powered Cyber & Cisco Networking Academy — Northeast Nigeria
+# Girls & Youth Cyber Career Academy — Maiduguri, Northeast Nigeria
+### Open-Source 10.2 kWp Solar Microgrid Telemetry & Cisco NetDevOps Infrastructure
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Open Collective Backers](https://img.shields.io/opencollective/all/cisco-cyber-academy-nigeria?label=Open%20Collective%20Backers&color=brightgreen)](https://opencollective.com/cisco-cyber-academy-nigeria)
